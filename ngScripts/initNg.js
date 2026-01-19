@@ -2,29 +2,28 @@ import { spawn, exec } from "child_process";
 import { promisify } from "util";
 import { promises as fs } from "fs";
 import path from "path";
-//import { createRequire } from "module";
-
-//const require = createRequire(import.meta.url);
-//const envfile = require("envfile");
-// import { parse, stringify } from "envfile";
+//import ws from "ws";
+// shim to insert WebSocket in global
+import ng from "lib-wasm";
+//global.WebSocket = ws;
 
 const execAsync = promisify(exec);
 
 const NG_DIR = "/nextgraph-rs/target/release/";
 /**
  * Orchestrates the initialization sequence:
- * 1. Run initial command and parse result
- * 2. Start a service and parse its output
- * 3. While service runs, execute a third command
- * 4. Stop the service
- * 5. Run final command
+ * 1. Generate the keys for the admin user and the client peer
+ * 2. Run NGD for the first time, with the admin key
+ * 3. Create the admin user
+ * 4. Create the user and the document for the mappings
+ * 5. Stop the service
+ * 6. Update the .env file with values
  */
 async function initializeApp() {
   let firstNgdProcess = null;
-
+  let secondNgdProcess = null;
   try {
-    // Step 1: Run initial command and parse result
-    // const { stdout: initialOutput } = await execAsync('echo "initial-data: key123"');
+    // Step 1: Generate the keys for the admin user and the client peer
     console.log("Step 1: Generating keys...");
     console.log("   -> For the admin user");
     const { stdout: genAdminKeyOutput } = await execAsync(
@@ -42,36 +41,46 @@ async function initializeApp() {
     console.log(parsedClientPeerKey);
 
     // Step 2: Start service and parse output
-    console.log("Step 2: Starting service...");
+    console.log("Step 2: Starting ngd first instance...");
     firstNgdProcess = await startNgdFirst(parsedAdminKey);
     const peerId = firstNgdProcess.jsonOutput.peerID; //TODO : Check the jsonOutput structure and get the peer id
     console.log("PeerId:", peerId);
-    // console.log('jsonOutput:', firstNgdProcess);
 
-    // Step 3: First run of NGD with the admin key, create the admin user
+    // Step 3: create the admin user
     console.log("Step 3: Creating the admin user...");
     const { stdout: createAdminUserOutput } = await execAsync(
       `${NG_DIR}ngcli --save-key -s 127.0.0.1,1440,${peerId} -u ${parsedAdminKey.private} admin add-user ${parsedAdminKey.public} -a`
     );
     console.log("Create admin user output:", createAdminUserOutput.trim());
 
-    // Step 4: Stop the service
+    // Step 5: Stop the service
     console.log("Step 4: Stopping Ngd...");
     await stopService(firstNgdProcess);
     console.log("Service stopped");
 
-    // // Step 5: Run final command
-    // console.log('Step 5: Running final command...');
-    // const { stdout: finalOutput } = await execAsync('echo "final-result"');
-    // console.log('Final command output:', finalOutput.trim());
+    // Step 2: Start service and parse output
+    console.log("Step 2: Starting ngd second instance...");
+    secondNgdProcess = await startNgdSecond();
+    console.log("Ngd second instance started");
 
-    // Step 5: Update .env file with parsed values
+    // Step 4: create the user and the document for the mappings
+    console.log("Step 4: Creating the user and the document for the mappings...");
+    const {mappingsNuri, userId} = await createUserAndDocument(parsedAdminKey, parsedClientPeerKey, peerId);
+    
+    // Step 5: Stop the service
+    console.log("Step 4: Stopping Ngd...");
+    await stopService(secondNgdProcess);
+    console.log("Service stopped");
+
+    // Step 6: Update .env file with parsed values
     console.log("Step 5: Updating .env file...");
     const envPath = path.join("/stack-root/ngScripts", ".env.sylvain"); // Adjust path as needed
     await updateEnvFile(envPath, {
       NG_ADMIN_USER_KEY: parsedAdminKey.private,
       NG_CLIENT_PEER_KEY: parsedClientPeerKey.private,
       NG_PEER_ID: peerId,
+      NG_MAPPINGS_NURI: mappingsNuri,
+      NG_MAPPINGS_USER_ID: userId,
     });
     console.log(".env file updated successfully");
 
@@ -87,6 +96,55 @@ async function initializeApp() {
 
     process.exit(1);
   }
+}
+
+/**
+ * Create the user and the document for the mappings
+ */
+async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
+  console.log("Creating the user and the document for the mappings...");
+  let config = {
+    // replace server_peer_id and admin_user_key with your own
+    // replace client_peer_key with a fresh key generated with `ngcli gen-key` (use the private key)
+    server_peer_id: peerId,
+    admin_user_key: adminKey.public,
+    client_peer_key: clientPeerKey.private,
+    server_addr: "127.0.0.1:1440",
+  };
+  
+  /**
+   * Create an admin user and get the user id
+   * id : XOct97tUc-ccyFUGe5sDUkHyXdTQ7LtGW1RVyYZzIYgA
+   */
+  await ng.init_headless(config)
+  let session_id;
+  console.log("Init headless done");
+  try {
+    let userId = await ng.admin_create_user(config);
+    // let user_id = "XOct97tUc-ccyFUGe5sDUkHyXdTQ7LtGW1RVyYZzIYgA"
+    console.log("Admin user created: ", userId);
+
+    let session = await ng.session_headless_start(userId);
+    session_id = session.session_id;
+    console.log(session);
+
+    let protected_repo_id = session.protected_store_id.substring(2, 46);
+    console.log("Session started. protected store ID = ", protected_repo_id);
+    let mappingsNuri = await ng.doc_create(
+      session_id,
+      "Graph",
+      "data:graph",
+      "store",
+      "protected",
+      protected_repo_id
+    );
+    console.log("Mappings nuri=", mappingsNuri);
+    await ng.session_headless_stop(session_id, true)
+    return {mappingsNuri: mappingsNuri, userId: userId};
+  } catch (e) {
+    console.error(e);
+    if (session_id) await ng.session_headless_stop(session_id, true);
+  }  
 }
 
 /**
@@ -261,6 +319,81 @@ function startNgdFirst(adminKey) {
           errorOutput,
           jsonOutput,
         });
+      }
+    }, 100);
+
+    // Handle process errors
+    childProcess.on("error", (error) => {
+      clearInterval(readyCheck);
+      reject(error);
+    });
+
+    // Timeout if service doesn't start
+    setTimeout(() => {
+      if (
+        childProcess.killed === false &&
+        !errorOutput.includes("Listening on lo")
+      ) {
+        clearInterval(readyCheck);
+        reject(new Error("Service failed to start within timeout"));
+      }
+    }, 30000);
+  });
+}
+
+/**
+ * Start ngd second instance and return the process
+ */
+function startNgdSecond() {
+  return new Promise((resolve, reject) => {
+    console.log("Starting ngd second instance...");
+    const childProcess = spawn(
+      NG_DIR + "ngd",
+      [
+        "-v",
+        "-b",
+        "./.ng.temp",
+        "-l",
+        "1440",
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: false,
+      }
+    );
+
+    let errorOutput = "";
+
+    // Prevent unhandled errors
+    const handleStreamError = (error) => {
+      // Ignore errors from closed streams
+      if (error.code !== "ECONNRESET" && error.code !== "EPIPE") {
+        console.warn("Stream error:", error.message);
+      }
+    };
+
+    // Collect stdout
+    childProcess.stdout.on("data", (data) => {
+      console.log("stdout:", data.toString());
+    });
+
+    childProcess.stdout.on("error", handleStreamError);
+
+    // Collect stderr
+    childProcess.stderr.on("data", (data) => {
+      errorOutput += data.toString();
+      console.log("stderr:", data.toString());
+    });
+
+    childProcess.stderr.on("error", handleStreamError);
+
+    // Wait for service to be ready
+    const readyCheck = setInterval(() => {
+      if (errorOutput.includes("Listening on lo")) {
+        clearInterval(readyCheck);
+        console.log("Service is ready");
+
+        resolve({process: childProcess});
       }
     }, 100);
 

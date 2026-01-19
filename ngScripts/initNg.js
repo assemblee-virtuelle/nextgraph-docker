@@ -2,10 +2,11 @@ import { spawn, exec } from "child_process";
 import { promisify } from "util";
 import { promises as fs } from "fs";
 import path from "path";
-import { createRequire } from "module";
+//import { createRequire } from "module";
 
-const require = createRequire(import.meta.url);
-const envfile = require("envfile");
+//const require = createRequire(import.meta.url);
+//const envfile = require("envfile");
+// import { parse, stringify } from "envfile";
 
 const execAsync = promisify(exec);
 
@@ -93,36 +94,51 @@ async function initializeApp() {
  * Uses envfile library for proper .env file handling
  */
 async function updateEnvFile(envPath, newValues) {
-  let envVars = {};
+  // let envVars = {};
   console.log("envPath:", envPath);
   console.log("newValues:", newValues);
 
+  let content = "";
   // Read existing .env file if it exists
   try {
     console.log("Reading .env file...");
-    const content = await fs.readFile(envPath, "utf8");
+    content = await fs.readFile(envPath, "utf8");
+    // const content = "TEST=test\nTEST2=test2";
     console.log("content:", content);
-    envVars = envfile.parse(content);
+    // envVars = envfile.parse(content);
+    // envVars = parse(content);
   } catch (error) {
     console.log("File doesn't exist, that's okay - we'll create it");
     // File doesn't exist, that's okay - we'll create it
     if (error.code !== "ENOENT") {
       console.error("Error reading .env file:", error);
-      // throw error;
+      throw error;
     }
   }
 
   // Merge new values (new values override existing ones)
-  envVars = { ...envVars, ...newValues };
+  //iterate over the new values and update the content
+  Object.entries(newValues).forEach(([key, value]) => {
+    const lineRegex = new RegExp(`^\\s*${key}=.*$`, "m");
+    //does the line exist in the content ?
+    if (lineRegex.test(content)) {
+      content = content.replace(lineRegex, `${key}=${value}`);
+    } else {
+      // If not, add the line to the end of the file
+      content = content.trimEnd() + `\n${key}=${value}\n`;
+    }
+  });
 
   // Write back to file
   try {
     console.log("Writing .env file...");
-    const content = envfile.stringify(envVars);
+    // const content = stringify(envVars);
+    console.log("content before writing:", content);
     await fs.writeFile(envPath, content, "utf8");
+    console.log("File written successfully");
   } catch (error) {
     console.error("Error writing .env file:", error);
-    // throw error;
+    throw error;
   }
 }
 
@@ -139,7 +155,7 @@ function parseGenKey(output) {
 function startNgdFirst(adminKey) {
   return new Promise((resolve, reject) => {
     console.log("Starting ngd first instance...");
-    const process = spawn(
+    const childProcess = spawn(
       NG_DIR + "ngd",
       [
         "-v",
@@ -164,8 +180,16 @@ function startNgdFirst(adminKey) {
     let braceCount = 0;
     let jsonStarted = false;
 
+    // Prevent unhandled errors
+    const handleStreamError = (error) => {
+      // Ignore errors from closed streams
+      if (error.code !== "ECONNRESET" && error.code !== "EPIPE") {
+        console.warn("Stream error:", error.message);
+      }
+    };
+
     // Collect stdout
-    process.stdout.on("data", (data) => {
+    childProcess.stdout.on("data", (data) => {
       console.log("stdout:", data.toString());
       const text = data.toString();
       startupOutput += text;
@@ -191,16 +215,20 @@ function startNgdFirst(adminKey) {
         }
       }
 
-      process.stdout.write(text); // Also forward to console
+      childProcess.stdout.write(text); // Also forward to console
     });
 
+    childProcess.stdout.on("error", handleStreamError);
+
     // Collect stderr
-    process.stderr.on("data", (data) => {
+    childProcess.stderr.on("data", (data) => {
       const text = data.toString();
       console.log("stderr:", text);
       errorOutput += text;
-      process.stderr.write(text);
+      childProcess.stderr.write(text);
     });
+
+    childProcess.stderr.on("error", handleStreamError);
 
     // Wait for service to be ready
     const readyCheck = setInterval(() => {
@@ -227,12 +255,17 @@ function startNgdFirst(adminKey) {
           }
         }
 
-        resolve({ process, startupOutput, errorOutput, jsonOutput });
+        resolve({
+          process: childProcess,
+          startupOutput,
+          errorOutput,
+          jsonOutput,
+        });
       }
     }, 100);
 
     // Handle process errors
-    process.on("error", (error) => {
+    childProcess.on("error", (error) => {
       clearInterval(readyCheck);
       reject(error);
     });
@@ -240,7 +273,7 @@ function startNgdFirst(adminKey) {
     // Timeout if service doesn't start
     setTimeout(() => {
       if (
-        process.killed === false &&
+        childProcess.killed === false &&
         !errorOutput.includes("Listening on lo")
       ) {
         clearInterval(readyCheck);
@@ -253,23 +286,38 @@ function startNgdFirst(adminKey) {
 /**
  * Stop the service gracefully
  */
-function stopService({ process }) {
+function stopService({ process: childProcess }) {
   return new Promise((resolve) => {
-    resolve("test");
+    // Clean up streams
+    const cleanup = () => {
+      if (childProcess.stdout) {
+        childProcess.stdout.removeAllListeners();
+        childProcess.stdout.destroy();
+      }
+      if (childProcess.stderr) {
+        childProcess.stderr.removeAllListeners();
+        childProcess.stderr.destroy();
+      }
+    };
+
     // Try graceful shutdown first
-    process.kill("SIGTERM");
+    childProcess.kill("SIGTERM");
 
     // Wait for process to exit
-    process.on("exit", (code) => {
+    childProcess.once("exit", (code) => {
       console.log(`Service exited with code ${code}`);
-      resolve();
+      cleanup();
+      // Add a small delay to ensure streams are fully closed
+      setTimeout(() => {
+        resolve();
+      }, 100);
     });
 
     // Force kill if it doesn't exit gracefully
     setTimeout(() => {
-      if (!process.killed) {
+      if (!childProcess.killed) {
         console.log("Force killing service...");
-        process.kill("SIGKILL");
+        childProcess.kill("SIGKILL");
         resolve();
       }
     }, 5000); // 5 second grace period

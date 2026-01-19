@@ -1,0 +1,1 @@
+rm -rf ../nextgraph-rs/.ng.temp && node initNg.js

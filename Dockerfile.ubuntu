@@ -35,10 +35,23 @@ RUN apt update && \
     # pnpm install && pnpm webfilebuild
     cd /nextgraph-rs/ && pnpm buildfront
 
+
 # Build the nextgraph-rs project and its subprojects
 WORKDIR /nextgraph-rs
 RUN cargo build -r -p ngd && \
     cargo build -r -p ngcli
+WORKDIR /nextgraph-rs/sdk/js/lib-wasm
+RUN cargo run-script node
+
+# Build argument to force cache invalidation for ngScripts COPY
+ARG NGSCRIPTS_CACHE_BUST=1
+
+# Copy ngScripts folder into the image
+COPY ngScripts /ngScripts
+
+WORKDIR /ngScripts
+RUN chmod +x test
+RUN export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && npm install /nextgraph-rs/sdk/js/lib-wasm/pkg-node
 
 # TODO: Build the platform-specific ng-app versions
 # WORKDIR /nextgraph-rs/ng-app

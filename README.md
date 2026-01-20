@@ -1,6 +1,14 @@
 # Nextgraph Docker image to be used as a triplestore in semapps applications
 
-## What to do if you want to run that stuff on you machine ?
+## What did we do ?
+
+We created a docker file that :
+1. Installs all necessary dependencies
+2. Build nextrgraph (ngd and ngcli)
+3. Builds the sdk for javascript
+4. Has the ability to initialize without creating a wallet
+
+For now the goal is only to be able to use nextgraph as a triplestore, but it may evolve in the future
 
 ### Build the image
 
@@ -20,117 +28,58 @@ services:
     restart: always
     volumes:
       - ./data/ng:/nextgraph-rs/.ng:z
-      - .:/stack-root # In order to be able to access the .env file during the initialization of nextgraph
+      - .env:/stack-root/.env:z # In order to be able to update the .env file during the initialization of nextgraph
     ports:
-      - '1440:1440/tcp'
+      - '1440:1440'
     expose:
-      - '1440/tcp'
-    environment:
-      ENV_FILE_NAME: .env #The name of the .env file that will be filled during the initialization of nextgraph
-      #ENV_PATH:  #The path to the .env file relative to the stack-root mounted volume, if not set, the .env file will be looked for (or created) in the stack-root folder
+      - '1440'
 ```
 
 ### What happens ?
 
-The entry point of the Docker image is a script that looks for existence of the data folder of nextgraph
+The entry point of the Docker image is a script that looks for existence of the data folder of nextgraph, specifically the server/key file.
 
-Open a shell in the container
+- If present, it considers the server intialized and launches ngd.
+- If not, it launches the init process (initNg.js) then launches ngd
 
-```
-docker exec -it ng_tests /bin/bash
-```
+### The INIT process
 
-Go in the ngScripts folder and install the dependencies and run the init script
+ 1. Generate the keys for the admin user and the client peer
+ 2. Run ngd for the first time, with the admin key
+ 3. Create the admin user with ngcli
+ 4. Create the user and the document for the mappings
+ 5. Stop ngd
+ 6. Update the .env file with values
 
-```
-cd /stack-root/ngScripts
-npm install
-node initNg.js
-```
+ ## Issue with accessing ngd from outside the container
 
-At this WIP stage the script launches ngd with a "-b ./ng.temp" option, that makes it so the server data aren't persistent in the container. That can be changed at lines 46-47 of the script.
-
-You should get an output like this :
-
-```
-Step 1: Generating keys...
-   -> For the admin user
-(node:2914) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///stack-root/ngScripts/initNg.js is not specified and it doesn't parse as CommonJS.
-Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-To eliminate this warning, add "type": "module" to /stack-root/ngScripts/package.json.
-(Use `node --trace-warnings ...` to show where the warning was created)
-{
-  public: 'VR9bkGF0bwI4L-eZjGCgMWNY25EgAkAW3Rb7FC5_XxYA',
-  private: 'MYN9ioLD8wOXiZ2vkWNoVoq_QIdIcRcmSz98Dwf3ZCIA'
-}
-   -> For the client peer
-{
-  public: '1hAaitnlcaYbJ4Q2_gIR-R-oxMC7ZYj_zQj4JSOMOmcA',
-  private: '7ylLS4mJaUT7SacPfcVU7mL_4w4j4eA02opKWbqSiP0A'
-}
-Step 2: Starting service...
-Starting ngd first instance...
-stderr: [2026-01-15T22:06:57Z INFO  ngd] Starting NextGraph daemon (ngd) version 0.1.2
-
-stderr: [2026-01-15T22:06:57Z INFO  ngd] PeerId of node: sQxVabYL8i2dbB6CDzSRW7BSwsmiaiyLQnpWaSjYliQA
-[2026-01-15T22:06:57Z WARN  ngd] No key provided, generating one
-
-stdout: {
-"peerID":"sQxVabYL8i2dbB6CDzSRW7BSwsmiaiyLQnpWaSjYliQA"
-}
-
-stderr: [2026-01-15T22:06:57Z INFO  ngd] The key has been saved to /nextgraph-rs/./.ng.temp/server/key
-
-stderr: [2026-01-15T22:06:57Z INFO  ng_storage_rocksdb::kcv_storage] created kcv storage with Rocksdb Version: 8.6.0
-
-stderr: [2026-01-15T22:06:57Z INFO  ng_storage_rocksdb::kcv_storage] created kcv storage with Rocksdb Version: 8.6.0
-
-stdout: The admin invitation link is: https://nextgraph.net/#/i/AAEAoAUAAQAkltgoaVZ6QossaqLJwlKwW5E0D4IebJ0t8gu2aVUMsQEAs7eNDcudQRwDW3N7-sy2Fb5Qq6oSKhFSBF8y_n3veqcBFXlvdXIgQnJva2VyLCBhcyBhZG1pbgA
-The admin invitation link is: http://localhost:1440/#/i/AAEAoAUAAQAkltgoaVZ6QossaqLJwlKwW5E0D4IebJ0t8gu2aVUMsQEAs7eNDcudQRwDW3N7-sy2Fb5Qq6oSKhFSBF8y_n3veqcBFXlvdXIgQnJva2VyLCBhcyBhZG1pbgA
-
-stderr: [2026-01-15T22:06:57Z INFO  ng_storage_rocksdb::kcv_storage] created kcv storage with Rocksdb Version: 8.6.0
-
-stderr: [2026-01-15T22:06:57Z INFO  ng_storage_rocksdb::block_storage] created blockstorage with Rocksdb Version: 8.6.0
-
-stderr: [2026-01-15T22:06:58Z INFO  ng_storage_rocksdb::kcv_storage] created kcv storage with Rocksdb Version: 8.6.0
-
-stderr: [2026-01-15T22:06:58Z INFO  ng_broker::server_ws] Listening on lo 127.0.0.1:1440, [::1]:1440
-
-Service is ready
-PeerId: sQxVabYL8i2dbB6CDzSRW7BSwsmiaiyLQnpWaSjYliQA
-Step 3: Creating the admin user...
-Create admin user output: User added successfully
-Step 4: Stopping Ngd...
-Service stopped
-Step 5: Updating .env file...
-envPath: /stack-root/ngScripts/.env.sylvain
-newValues: {
-  NG_ADMIN_USER_KEY: 'MYN9ioLD8wOXiZ2vkWNoVoq_QIdIcRcmSz98Dwf3ZCIA',
-  NG_CLIENT_PEER_KEY: '7ylLS4mJaUT7SacPfcVU7mL_4w4j4eA02opKWbqSiP0A',
-  NG_PEER_ID: 'sQxVabYL8i2dbB6CDzSRW7BSwsmiaiyLQnpWaSjYliQA'
-}
-Reading .env file...
-node:events:497
-      throw er; // Unhandled 'error' event
-      ^
-
-Error: read ECONNRESET
-    at Pipe.onStreamRead (node:internal/stream_base_commons:216:20)
-Emitted 'error' event on Socket instance at:
-    at emitErrorNT (node:internal/streams/destroy:170:8)
-    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
-    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
-  errno: -104,
-  code: 'ECONNRESET',
-  syscall: 'read'
-}
-
-Node.js v22.21.1
+### Context
+Ngd is listening on loopback and eth0 :
+```bash 
+2026-01-20 20:59:50 Key file found at /nextgraph-rs/.ng/server/key. Launching ngd...
+2026-01-20 20:59:50 [2026-01-20T19:59:50Z INFO  ng_storage_rocksdb::kcv_storage] created kcv storage with Rocksdb Version: 8.6.0
+2026-01-20 20:59:50 [2026-01-20T19:59:50Z INFO  ng_broker::server_ws] Listening on lo 127.0.0.1:1440, [::1]:1440
+2026-01-20 20:59:50 [2026-01-20T19:59:50Z INFO  ng_broker::server_ws] Listening on eth0 172.21.0.2:1440
 ```
 
-The updating the .env part isn't working yet but the server is well initialized.
+### The test 
 
-### And now, how do I actually use of the container ?
+From a terminal in, the container, use ngcli to access the server through the loopback interface :
+```
+root@d6eff07722db:/nextgraph-rs# target/release/ngcli --save-key -v -s 127.0.0.1,1440,<peer id of ngd> -u <private key of the admin user> admin list-users
+Found 2 users
+ftg7uemjIcl1SBgE7HFRtlW9NelbKNSvrsobk_5RsD4A
+ftg7uemjIcl1SBgE7HFRtlW9NelbKNSvrsobk_5RsD4A
+root@d6eff07722db:/nextgraph-rs# 
+```
 
-Well I'm reaaly happy you asked, cause I actually really don't know yet !
-There is an issue integrating ng with docker, and I don't know yet what it is.
+Same thing from a terminal in the host machine, with ngcli built from the same commit : 
+
+```
+sylvain@UP222:~/NG/nextgraph-rs-docker-test$ target/release/ngcli --save-key -v -s 127.0.0.1,1440,<peer id of ngd> -u <private key of the admin user> admin list-users
+[2026-01-20T19:07:18Z ERROR ngcli] An error occurred: ConnectionError
+Error: Custom { kind: Other, error: "ProtocolError:ConnectionError" }
+sylvain@UP222:~/NG/nextgraph-rs-docker-test$
+```
+
+Nothing happens in the console output of ngd...

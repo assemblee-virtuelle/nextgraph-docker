@@ -7,11 +7,10 @@ import ng from "lib-wasm";
 const execAsync = promisify(exec);
 
 const NG_DIR = "/nextgraph-rs/target/release/";
-const ENV_FILE_NAME = process.env.ENV_FILE_NAME || ".env";
-const ENV_PATH = path.join("/stack-root", process.env.ENV_PATH || "", ENV_FILE_NAME);
+const ENV_PATH = "/stack-root/.env";
 
 /**
- * Orchestrates the initialization sequence:
+ * Orchestrates the initialization sequence of nextgraph:
  * 1. Generate the keys for the admin user and the client peer
  * 2. Run NGD for the first time, with the admin key
  * 3. Create the admin user
@@ -133,19 +132,14 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
  * Uses envfile library for proper .env file handling
  */
 async function updateEnvFile(envPath, newValues) {
-  // let envVars = {};
-  console.log("envPath:", envPath);
-  console.log("newValues:", newValues);
 
   let content = "";
   // Read existing .env file if it exists
   try {
     console.log("Reading .env file...");
     content = await fs.readFile(envPath, "utf8");
-    // const content = "TEST=test\nTEST2=test2";
-    console.log("content:", content);
-    // envVars = envfile.parse(content);
-    // envVars = parse(content);
+    console.log("content of the .env file before update:", content);
+
   } catch (error) {
     console.log("File doesn't exist, that's okay - we'll create it");
     // File doesn't exist, that's okay - we'll create it
@@ -172,7 +166,7 @@ async function updateEnvFile(envPath, newValues) {
   try {
     console.log("Writing .env file...");
     // const content = stringify(envVars);
-    console.log("content before writing:", content);
+    console.log("Updated content:", content);
     await fs.writeFile(envPath, content, "utf8");
     console.log("File written successfully");
   } catch (error) {
@@ -197,15 +191,15 @@ function startNgdFirst(adminKey) {
     const childProcess = spawn(
       NG_DIR + "ngd",
       [
-        "-v",
-        "-b",
-        "/nextgraph-rs/.ng",
-        "--json",
-        "--save-key",
-        "-l",
-        "1440",
-        "--admin",
-        adminKey.public,
+        "-v", // verbose mode
+        "-b", // use a given base directory
+        "/nextgraph-rs/.ng", // path to the .ng folder
+        "--json", // output in json format
+        "--save-key", // save the key to the .ng folder
+        "-l", // listen on loopback address
+        "1440", // port
+        "--admin", // use a given admin key
+        adminKey.public, // admin key
       ],
       {
         stdio: ["ignore", "pipe", "pipe"],
@@ -259,7 +253,7 @@ function startNgdFirst(adminKey) {
 
     childProcess.stdout.on("error", handleStreamError);
 
-    // Collect stderr
+    // Collect stderr (contains debug information cause the the json option masks them from stdout)
     childProcess.stderr.on("data", (data) => {
       const text = data.toString();
       console.log("Debug:", text);

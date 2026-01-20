@@ -53,15 +53,15 @@ async function initializeApp() {
     );
     console.log("Create admin user output:", createAdminUserOutput.trim());
 
-    // Step 5: Stop the service
-    console.log("Step 4: Stopping Ngd...");
-    await stopService(firstNgdProcess);
-    console.log("Service stopped");
+    // // Step 5: Stop the service
+    // console.log("Step 4: Stopping Ngd...");
+    // await stopService(firstNgdProcess);
+    // console.log("Service stopped");
 
-    // Step 2: Start service and parse output
-    console.log("Step 2: Starting ngd second instance...");
-    secondNgdProcess = await startNgdSecond();
-    console.log("Ngd second instance started");
+    // // Step 2: Start service and parse output
+    // console.log("Step 2: Starting ngd second instance...");
+    // secondNgdProcess = await startNgdSecond();
+    // console.log("Ngd second instance started");
 
     // Step 4: create the user and the document for the mappings
     console.log("Step 4: Creating the user and the document for the mappings...");
@@ -69,7 +69,8 @@ async function initializeApp() {
     
     // Step 5: Stop the service
     console.log("Step 4: Stopping Ngd...");
-    await stopService(secondNgdProcess);
+    await stopService(firstNgdProcess);
+    // await stopService(secondNgdProcess);
     console.log("Service stopped");
 
     // Step 6: Update .env file with parsed values
@@ -107,7 +108,7 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
     // replace server_peer_id and admin_user_key with your own
     // replace client_peer_key with a fresh key generated with `ngcli gen-key` (use the private key)
     server_peer_id: peerId,
-    admin_user_key: adminKey.public,
+    admin_user_key: adminKey.private,
     client_peer_key: clientPeerKey.private,
     server_addr: "127.0.0.1:1440",
   };
@@ -393,7 +394,10 @@ function startNgdSecond() {
         clearInterval(readyCheck);
         console.log("Service is ready");
 
-        resolve({process: childProcess});
+        //add a one second timeout
+        setTimeout(() => {
+          resolve({process: childProcess});
+        }, 1000);
       }
     }, 100);
 

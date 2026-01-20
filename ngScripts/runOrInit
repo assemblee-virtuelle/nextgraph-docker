@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -e
+
+KEY_FILE="/nextgraph-rs/.ng/server/key"
+
+if [ ! -f "$KEY_FILE" ]; then
+  echo "Key file not found at $KEY_FILE. Running initialization..."
+  # Source nvm to make node available
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  # Run the initialization script
+  cd /ngScripts
+  node initNg.js
+  # After initialization, launch ngd
+  echo "Initialization complete. Launching ngd..."
+  exec /nextgraph-rs/target/release/ngd -v -b /nextgraph-rs/.ng -p eth0:1440 -l 1440
+else
+  echo "Key file found at $KEY_FILE. Launching ngd..."
+  # Launch ngd directly
+  exec /nextgraph-rs/target/release/ngd -v -b /nextgraph-rs/.ng -p eth0:1440 -l 1440
+fi

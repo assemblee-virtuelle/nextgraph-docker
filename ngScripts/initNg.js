@@ -7,7 +7,7 @@ import ng from "lib-wasm";
 const execAsync = promisify(exec);
 
 const NG_DIR = "/nextgraph-rs/target/release/";
-const ENV_FILE_NAME = process.env.ENV_FILE_NAME || ".env.sylvain";
+const ENV_FILE_NAME = process.env.ENV_FILE_NAME || ".env";
 const ENV_PATH = path.join("/stack-root", process.env.ENV_PATH || "", ENV_FILE_NAME);
 
 /**
@@ -19,7 +19,7 @@ const ENV_PATH = path.join("/stack-root", process.env.ENV_PATH || "", ENV_FILE_N
  * 5. Stop the service
  * 6. Update the .env file with values
  */
-async function initializeApp() {
+async function initializeNg() {
   let firstNgdProcess = null;
 
   try {
@@ -198,6 +198,8 @@ function startNgdFirst(adminKey) {
       NG_DIR + "ngd",
       [
         "-v",
+        "-b",
+        "/nextgraph-rs/.ng",
         "--json",
         "--save-key",
         "-l",
@@ -260,7 +262,7 @@ function startNgdFirst(adminKey) {
     // Collect stderr
     childProcess.stderr.on("data", (data) => {
       const text = data.toString();
-      console.log("stderr:", text);
+      console.log("Debug:", text);
       errorOutput += text;
       childProcess.stderr.write(text);
     });
@@ -363,4 +365,4 @@ function stopService({ process: childProcess }) {
 }
 
 // Run the initialization
-initializeApp();
+initializeNg();

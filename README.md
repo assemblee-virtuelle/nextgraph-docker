@@ -1,10 +1,6 @@
-# nextgraph-docker
-
-Welcome to the big mess !
+# Nextgraph Docker image to be used as a triplestore in semapps applications
 
 ## What to do if you want to run that stuff on you machine ?
-
-Start by being very positive about life ^^
 
 ### Build the image
 
@@ -21,23 +17,22 @@ services:
   ng_tests:
     image: nextgraph-rs:ubuntu
     container_name: ng_tests
-    # uncomment the next line once ngd in properly initialized
-    # command: ["/nextgraph-rs/target/release/ngd", "-v", "-p", "eth0:14400", "-l", "14400"]
-
-    stdin_open: true
-    tty: true
     restart: always
     volumes:
       - ./data/ng:/nextgraph-rs/.ng:z
-      - .:z
-    # network_mode: "host"
+      - .:/stack-root # In order to be able to access the .env file during the initialization of nextgraph
     ports:
-      - "14400:14400/tcp"
+      - '1440:1440/tcp'
     expose:
-      - "14400/tcp"
+      - '1440/tcp'
+    environment:
+      ENV_FILE_NAME: .env #The name of the .env file that will be filled during the initialization of nextgraph
+      #ENV_PATH:  #The path to the .env file relative to the stack-root mounted volume, if not set, the .env file will be looked for (or created) in the stack-root folder
 ```
 
-### In the container
+### What happens ?
+
+The entry point of the Docker image is a script that looks for existence of the data folder of nextgraph
 
 Open a shell in the container
 

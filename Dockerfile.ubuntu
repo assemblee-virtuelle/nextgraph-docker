@@ -2,8 +2,8 @@
 FROM ubuntu:22.04
 
 SHELL ["/bin/bash", "-c"]
-EXPOSE 14400/tcp
-EXPOSE 14400/udp
+EXPOSE 1440/tcp
+EXPOSE 1440/udp
 
 # Set the environment variable to ensure cargo is available in the PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -50,8 +50,13 @@ ARG NGSCRIPTS_CACHE_BUST=1
 COPY ngScripts /ngScripts
 
 WORKDIR /ngScripts
-RUN chmod +x test
+RUN chmod +x runOrInit
 RUN export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && npm install /nextgraph-rs/sdk/js/lib-wasm/pkg-node
+
+WORKDIR /nextgraph-rs
+
+# Set runOrInit as the entrypoint
+ENTRYPOINT ["/ngScripts/runOrInit"]
 
 # TODO: Build the platform-specific ng-app versions
 # WORKDIR /nextgraph-rs/ng-app

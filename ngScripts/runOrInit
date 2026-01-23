@@ -14,9 +14,9 @@ if [ ! -f "$KEY_FILE" ]; then
   node initNg.js
   # After initialization, launch ngd
   echo "Initialization complete. Launching ngd..."
-  exec /nextgraph-rs/target/release/ngd -v -b /nextgraph-rs/.ng -p eth0:1440 -l 1440
+  exec /nextgraph-rs/target/release/ngd -v -b /nextgraph-rs/.ng -p eth0:14400 -l 14400
 else
   echo "Key file found at $KEY_FILE. Launching ngd..."
   # Launch ngd directly
-  exec /nextgraph-rs/target/release/ngd -v -b /nextgraph-rs/.ng -p eth0:1440 -l 1440
+  exec /nextgraph-rs/target/release/ngd -v -b /nextgraph-rs/.ng -p eth0:14400 -l 14400
 fi

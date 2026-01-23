@@ -26,7 +26,7 @@ async function initializeNg() {
     console.log("Step 1: Generating keys...");
     console.log("   -> For the admin user");
     const { stdout: genAdminKeyOutput } = await execAsync(
-      NG_DIR + "ngcli gen-key --json"
+      NG_DIR + "ngcli gen-key --json",
     );
 
     const parsedAdminKey = parseGenKey(genAdminKeyOutput);
@@ -34,7 +34,7 @@ async function initializeNg() {
 
     console.log("   -> For the client peer");
     const { stdout: genClientPeerKeyOutput } = await execAsync(
-      NG_DIR + "ngcli gen-key --json"
+      NG_DIR + "ngcli gen-key --json",
     );
     const parsedClientPeerKey = parseGenKey(genClientPeerKeyOutput);
     console.log(parsedClientPeerKey);
@@ -48,14 +48,20 @@ async function initializeNg() {
     // Step 3: create the admin user
     console.log("Step 3: Creating the admin user...");
     const { stdout: createAdminUserOutput } = await execAsync(
-      `${NG_DIR}ngcli --save-key -s 127.0.0.1,1440,${peerId} -u ${parsedAdminKey.private} admin add-user ${parsedAdminKey.public} -a`
+      `${NG_DIR}ngcli --save-key -s 127.0.0.1,14400,${peerId} -u ${parsedAdminKey.private} admin add-user ${parsedAdminKey.public} -a`,
     );
     console.log("Create admin user output:", createAdminUserOutput.trim());
 
     // Step 4: create the user and the document for the mappings
-    console.log("Step 4: Creating the user and the document for the mappings...");
-    const {mappingsNuri, userId} = await createUserAndDocument(parsedAdminKey, parsedClientPeerKey, peerId);
-    
+    console.log(
+      "Step 4: Creating the user and the document for the mappings...",
+    );
+    const { mappingsNuri, userId } = await createUserAndDocument(
+      parsedAdminKey,
+      parsedClientPeerKey,
+      peerId,
+    );
+
     // Step 5: Stop the service
     console.log("Step 4: Stopping Ngd...");
     await stopService(firstNgdProcess);
@@ -66,7 +72,7 @@ async function initializeNg() {
     await updateEnvFile(ENV_PATH, {
       NG_ADMIN_USER_KEY: parsedAdminKey.private,
       NG_CLIENT_PEER_KEY: parsedClientPeerKey.private,
-      NG_PEER_ID: peerId,
+      NG_SERVER_PEER_ID: peerId,
       NG_MAPPINGS_NURI: mappingsNuri,
       NG_MAPPINGS_USER_ID: userId,
     });
@@ -95,10 +101,10 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
     server_peer_id: peerId,
     admin_user_key: adminKey.private,
     client_peer_key: clientPeerKey.private,
-    server_addr: "127.0.0.1:1440",
+    server_addr: "127.0.0.1:14400",
   };
-  
-  await ng.init_headless(config)
+
+  await ng.init_headless(config);
   let session_id;
   try {
     let userId = await ng.admin_create_user(config);
@@ -116,15 +122,15 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
       "data:graph",
       "store",
       "protected",
-      protected_repo_id
+      protected_repo_id,
     );
     console.log("Mappings document created with nuri:", mappingsNuri);
-    await ng.session_headless_stop(session_id, true)
-    return {mappingsNuri: mappingsNuri, userId: userId};
+    await ng.session_headless_stop(session_id, true);
+    return { mappingsNuri: mappingsNuri, userId: userId };
   } catch (e) {
     console.error(e);
     if (session_id) await ng.session_headless_stop(session_id, true);
-  }  
+  }
 }
 
 /**
@@ -132,14 +138,12 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
  * Uses envfile library for proper .env file handling
  */
 async function updateEnvFile(envPath, newValues) {
-
   let content = "";
   // Read existing .env file if it exists
   try {
     console.log("Reading .env file...");
     content = await fs.readFile(envPath, "utf8");
     console.log("content of the .env file before update:", content);
-
   } catch (error) {
     console.log("File doesn't exist, that's okay - we'll create it");
     // File doesn't exist, that's okay - we'll create it
@@ -197,14 +201,14 @@ function startNgdFirst(adminKey) {
         "--json", // output in json format
         "--save-key", // save the key to the .ng folder
         "-l", // listen on loopback address
-        "1440", // port
+        "14400", // port
         "--admin", // use a given admin key
         adminKey.public, // admin key
       ],
       {
         stdio: ["ignore", "pipe", "pipe"],
         detached: false,
-      }
+      },
     );
 
     let startupOutput = "";
@@ -315,7 +319,6 @@ function startNgdFirst(adminKey) {
     }, 30000);
   });
 }
-
 
 /**
  * Stop the service gracefully

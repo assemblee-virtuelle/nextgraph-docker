@@ -107,7 +107,7 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
   await ng.init_headless(config);
   let session_id;
   try {
-    let userId = await ng.admin_create_user(config);
+    let userId = await ng.admin_create_user(0);
     console.log("Mappings user created: ", userId);
 
     let session = await ng.session_headless_start(userId);
@@ -128,8 +128,8 @@ async function createUserAndDocument(adminKey, clientPeerKey, peerId) {
     await ng.session_headless_stop(session_id, true);
     return { mappingsNuri: mappingsNuri, userId: userId };
   } catch (e) {
-    console.error(e);
     if (session_id) await ng.session_headless_stop(session_id, true);
+    throw e;
   }
 }
 

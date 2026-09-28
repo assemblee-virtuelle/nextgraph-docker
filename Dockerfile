@@ -24,15 +24,14 @@ RUN apt update && \
     cargo install wasm-pack --git https://git.nextgraph.org/NextGraph/wasm-pack.git --branch master --locked && \
     npm install -g pnpm && \
     # Clone the nextgraph-rs repository (TODO: It might be better to put this into a seperate RUN command to avoid rebuilding the image if the repository changes)
-    git clone https://git.nextgraph.org/NextGraph/nextgraph-rs.git && \
+    git clone --depth 1 https://git.nextgraph.org/rixed/nextgraph-rs.git && \
     # Build ng-app web version
     cd /nextgraph-rs/ && pnpm buildfront
 
 
 # Build the nextgraph-rs project and its subprojects
 WORKDIR /nextgraph-rs
-RUN cargo build -r -p ngd && \
-    cargo build -r -p ngcli
+RUN cargo build -r -p ngd -p ngcli --features ng-broker/usage-stats,ng-net/usage-stats
 
 # Build sdk
 WORKDIR /nextgraph-rs/sdk/js/lib-wasm
